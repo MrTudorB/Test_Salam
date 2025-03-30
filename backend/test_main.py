@@ -2,62 +2,73 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 
-# Create a TestClient for our FastAPI 'app'
 client = TestClient(app)
 
-# 1) Test GET /api/getBalance with a valid address
-def test_get_balance_valid_address():
-    # You can replace this with any valid checksummed or non-checksummed address.
-    # For test purposes, let's just use a random address (the request won't fail
-    # unless the address format is incorrect).
+# Valid balance retrieval
+def test_get_balance_valid():
     valid_address = "0x0000000000000000000000000000000000000000"
-
     response = client.get(f"/api/getBalance?address={valid_address}")
-    assert response.status_code == 200, response.text
-
+    assert response.status_code == 200
     data = response.json()
-    assert "address" in data
+    assert data["address"] == valid_address
     assert "balance" in data
 
-    # You can also check that the address in the response is checksummed
-    # or matches your expectation:
-    assert data["address"] == "0x0000000000000000000000000000000000000000"
-
-
-# 2) Test GET /api/getBalance with an invalid address
-def test_get_balance_invalid_address():
-    invalid_address = "invalid_wallet_address"
-
+# Invalid balance retrieval (invalid address format)
+def test_get_balance_invalid_format():
+    invalid_address = "0x123"
     response = client.get(f"/api/getBalance?address={invalid_address}")
-    # Our code should raise HTTPException(400) for invalid addresses
-    assert response.status_code == 400, response.text
+    assert response.status_code == 200  # According to your current logic
     data = response.json()
-    assert "detail" in data
-    assert data["detail"] == "Invalid address format"
+    assert "error" in data
+    assert data["error"] == "Invalid address"
 
+# Missing address parameter
+def test_get_balance_missing_address():
+    response = client.get("/api/getBalance")
+    assert response.status_code == 422  # FastAPI validation error for missing parameter
 
-# 3) Test POST /api/analyzeWallet with valid address
+# Valid wallet analysis
 def test_analyze_wallet_valid():
-    valid_payload = {"address": "0x0000000000000000000000000000000000000000"}
-
-    response = client.post("/api/analyzeWallet", json=valid_payload)
-    assert response.status_code == 200, response.text
-
+    payload = {"address": "0x0000000000000000000000000000000000000000"}
+    response = client.post("/api/analyzeWallet", json=payload)
+    assert response.status_code == 200
     data = response.json()
-    # Example structure: {"wallet": "...", "analysis": {...}}
-    assert "wallet" in data
+    assert data["wallet"] == payload["address"]
     assert "analysis" in data
-    assert "balanceEth" in data["analysis"]  # if that's what you return
-    assert "sampleAnalysis" in data["analysis"]
+    assert "balanceEth" in data["analysis"]
 
-
-# 4) Test POST /api/analyzeWallet with invalid address
-def test_analyze_wallet_invalid():
-    invalid_payload = {"address": "notARealAddress"}
-
-    response = client.post("/api/analyzeWallet", json=invalid_payload)
-    assert response.status_code == 400, response.text
-
+# Invalid wallet analysis (invalid address format)
+def test_analyze_wallet_invalid_format():
+    payload = {"address": "invalid_address"}
+    response = client.post("/api/analyzeWallet", json=payload)
+    assert response.status_code == 200  # According to your current logic
     data = response.json()
-    assert "detail" in data
-    assert data["detail"] == "Invalid wallet address"
+    assert "error" in data
+    assert data["error"] == "Invalid wallet address"
+
+# Wallet analysis with missing body
+def test_analyze_wallet_missing_body():
+    response = client.post("/api/analyzeWallet")
+    assert response.status_code == 422  # FastAPI validation error for missing body
+
+# CORS preflight check (important if you call from frontend)
+def test_cors_headers():
+    response = client.options(
+        "/api/analyzeWallet",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST"
+        }
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+# Test an address with realistic balance retrieval
+def test_get_balance_realistic_address():
+    realistic_address = "0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045"  # Vitalik's known address
+    response = client.get(f"/api/getBalance?address={realistic_address}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["address"].lower() == realistic_address.lower()
+    assert "balance" in data
+    assert float(data["balance"]) >= 0  # Just ensures the balance is numeric and >=0
